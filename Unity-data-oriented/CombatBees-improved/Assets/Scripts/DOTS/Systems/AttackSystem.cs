@@ -7,12 +7,16 @@ using Unity.Collections;
 
 namespace DOTS
 {
-
     [BurstCompile]
     [UpdateBefore(typeof(BeePositionUpdateSystem))]
     public partial struct AttackSystem : ISystem
     {
-        public void OnDestroy(ref SystemState state) { }
+        private EntityQueryMask _deadMask;
+
+        public void OnCreate(ref SystemState state)
+        {
+            _deadMask = SystemAPI.QueryBuilder().WithAll<Dead>().Build().GetEntityQueryMask();
+        }
 
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
@@ -22,9 +26,8 @@ namespace DOTS
             {
                 Ecb = ecb,
                 deltaTime = state.WorldUnmanaged.Time.DeltaTime,
-                DeadLookup = SystemAPI.GetComponentLookup<Dead>(true),
+                DeadMask = _deadMask,
                 TransformLookup = SystemAPI.GetComponentLookup<LocalToWorld>(true)
-
             }.ScheduleParallel(state.Dependency);
         }
 
@@ -36,16 +39,18 @@ namespace DOTS
         }
 
         [BurstCompile]
+        [WithNone(typeof(Dead))]
         public partial struct AttackJob : IJobEntity
         {
             public EntityCommandBuffer.ParallelWriter Ecb;
             public float deltaTime;
-            [ReadOnly] public ComponentLookup<Dead> DeadLookup;
+            public EntityQueryMask DeadMask;
             [ReadOnly] public ComponentLookup<LocalToWorld> TransformLookup;
 
-            private void Execute(Entity e, [ChunkIndexInQuery] int chunkIndex, ref Velocity velocity, ref Target target, in Team team, in LocalTransform transform, in Alive _)
+            private void Execute([ChunkIndexInQuery] int chunkIndex, ref Velocity velocity, ref Target target,
+                in LocalTransform transform)
             {
-                if (DeadLookup.HasComponent(target.enemyTarget))
+                if (DeadMask.MatchesIgnoreFilter(target.enemyTarget))
                 {
                     //the target is dead
                     target.enemyTarget = Entity.Null;
@@ -53,9 +58,9 @@ namespace DOTS
                 }
 
                 var beePosition = transform.Position;
-                var enmeyPosition = TransformLookup.GetRefRO(target.enemyTarget).ValueRO.Position;
+                var enemyPosition = TransformLookup.GetRefRO(target.enemyTarget).ValueRO.Position;
 
-                var delta = enmeyPosition - beePosition;
+                var delta = enemyPosition - beePosition;
                 float sqrDist = delta.x * delta.x + delta.y * delta.y + delta.z * delta.z;
                 if (sqrDist > Data.attackDistance * Data.attackDistance)
                 {
@@ -66,9 +71,7 @@ namespace DOTS
                     velocity.Value += delta * (Data.attackForce * deltaTime / math.sqrt(sqrDist));
                     if (sqrDist < Data.hitDistance * Data.hitDistance)
                     {
-                        Ecb.AddComponent<Dead>(chunkIndex, target.enemyTarget);
-                        Ecb.AddComponent(chunkIndex, target.enemyTarget, new DeadTimer { time = 0.0f });
-                        Ecb.RemoveComponent<Alive>(chunkIndex, target.enemyTarget);
+                        Ecb.AddComponent(chunkIndex, target.enemyTarget, new Dead());
                     }
                 }
             }

@@ -4,14 +4,11 @@ using Unity.Transforms;
 
 namespace DOTS
 {
-
     [BurstCompile]
     [UpdateBefore(typeof(BeePositionUpdateSystem))]
     public partial struct DeadBeesSystem : ISystem
     {
-        public void OnCreate(ref SystemState state)
-        {
-        }
+        public void OnCreate(ref SystemState state) { }
 
         public void OnDestroy(ref SystemState state) { }
 
@@ -24,7 +21,6 @@ namespace DOTS
             {
                 Ecb = ecb,
                 deltaTime = state.WorldUnmanaged.Time.DeltaTime
-
             }.ScheduleParallel(state.Dependency);
         }
 
@@ -41,7 +37,8 @@ namespace DOTS
             public EntityCommandBuffer.ParallelWriter Ecb;
             public float deltaTime;
 
-            private void Execute(Entity e, [ChunkIndexInQuery] int chunkIndex, ref Velocity velocity, ref DeadTimer deadTimer, in Dead dead)
+            private void Execute(Entity e, [ChunkIndexInQuery] int chunkIndex, ref Velocity velocity,
+                ref Dead deadTimer)
             {
                 deadTimer.time += deltaTime / 10.0f;
                 velocity.Value.y += Field.gravity * deltaTime;
@@ -52,6 +49,5 @@ namespace DOTS
                 }
             }
         }
-
     }
 }

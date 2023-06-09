@@ -6,6 +6,7 @@ using Unity.Core;
 namespace DOTS
 {
     [BurstCompile]
+    [UpdateInGroup(typeof(SimulationSystemGroup), OrderFirst = true)]
     [UpdateBefore(typeof(DeadBeesSystem))]
     public partial struct BeeSpawnSystem : ISystem
     {
@@ -16,15 +17,10 @@ namespace DOTS
 
         public void OnCreate(ref SystemState state)
         {
-
-            team1Alive = state.EntityManager.CreateEntityQuery(typeof(Team), typeof(Alive));
-            team1Alive.AddSharedComponentFilter<Team>(1);
-            team2Alive = state.EntityManager.CreateEntityQuery(typeof(Team), typeof(Alive));
-            team2Alive.AddSharedComponentFilter<Team>(2);
-            team1Dead = state.EntityManager.CreateEntityQuery(typeof(Team), typeof(Dead));
-            team1Dead.AddSharedComponentFilter<Team>(1);
-            team2Dead = state.EntityManager.CreateEntityQuery(typeof(Team), typeof(Dead));
-            team2Dead.AddSharedComponentFilter<Team>(2);
+            team1Alive = SystemAPI.QueryBuilder().WithAll<TeamOne, Team>().WithNone<Dead>().Build();
+            team2Alive = SystemAPI.QueryBuilder().WithAll<TeamTwo, Team>().WithNone<Dead>().Build();
+            team1Dead = SystemAPI.QueryBuilder().WithAll<TeamOne, Team, Dead>().Build();
+            team2Dead = SystemAPI.QueryBuilder().WithAll<TeamTwo, Team, Dead>().Build();
         }
 
         public void OnDestroy(ref SystemState state) { }
@@ -32,8 +28,6 @@ namespace DOTS
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            EntityCommandBuffer.ParallelWriter ecb = GetEntityCommandBuffer(ref state);
-
             int team1AliveCount = team1Alive.CalculateEntityCount();
             int team1DeadCount = team1Dead.CalculateEntityCount();
             int team1BeeCount = team1AliveCount + team1DeadCount;
@@ -43,55 +37,25 @@ namespace DOTS
             int team2DeadCount = team2Dead.CalculateEntityCount();
             int team2BeeCount = team2AliveCount + team2DeadCount;
 
-            // Creates a new instance of the job, assigns the necessary data, and schedules the job in parallel.
-            new ProcessSpawnerJob
+            var em = state.EntityManager;
+
+            var timeData = SystemAPI.Time;
+
+            foreach (var spawnerRef in SystemAPI.Query<RefRW<Spawner>>())
             {
-                Ecb = ecb,
-                team1BeeCount = team1BeeCount,
-                team2BeeCount = team2BeeCount,
-                timeData = state.WorldUnmanaged.Time
-
-            }.ScheduleParallel();
-        }
-
-        private EntityCommandBuffer.ParallelWriter GetEntityCommandBuffer(ref SystemState state)
-        {
-            var ecbSingleton = SystemAPI.GetSingleton<BeginSimulationEntityCommandBufferSystem.Singleton>();
-            var ecb = ecbSingleton.CreateCommandBuffer(state.WorldUnmanaged);
-            return ecb.AsParallelWriter();
-        }
-
-
-        [BurstCompile]
-        public partial struct ProcessSpawnerJob : IJobEntity
-        {
-            public EntityCommandBuffer.ParallelWriter Ecb;
-            public int team1BeeCount;
-            public int team2BeeCount;
-            public TimeData timeData;
-
-            // IJobEntity generates a component data query based on the parameters of its `Execute` method.
-            // This example queries for all Spawner components and uses `ref` to specify that the operation
-            // requires read and write access. Unity processes `Execute` for each entity that matches the
-            // component data query.
-            private void Execute([ChunkIndexInQuery] int chunkIndex, ref Spawner spawner)
-            {
+                ref var spawner = ref spawnerRef.ValueRW;
 
                 int beesToSpawnTeam1 = Data.beeStartCount / 2 - team1BeeCount;
 
                 for (int i = 0; i < beesToSpawnTeam1; i++)
                 {
-                    Entity newEntity = Ecb.Instantiate(chunkIndex, spawner.BlueBee);
+                    Entity newEntity = em.Instantiate(spawner.TeamOneBee);
                     var rand = new RandomComponent();
                     rand.generator.InitState((uint)((i + 1) * (timeData.ElapsedTime + 1.0) * 57131));
                     var transform = LocalTransform.FromPosition(spawner.Team1SpawnPosition);
                     transform.Scale = rand.generator.NextFloat(Data.minBeeSize, Data.maxBeeSize);
-                    Ecb.SetComponent(chunkIndex, newEntity, transform);
-                    Ecb.AddComponent(chunkIndex, newEntity, new Velocity());
-                    Ecb.AddComponent(chunkIndex, newEntity, new Alive());
-                    Ecb.AddComponent(chunkIndex, newEntity, new Target());
-                    Ecb.AddComponent(chunkIndex, newEntity, rand);
-                    Ecb.AddSharedComponent(chunkIndex, newEntity, new Team { Value = 1 });
+                    SystemAPI.SetComponent(newEntity, transform);
+                    SystemAPI.SetComponent(newEntity, rand);
                 }
 
 
@@ -99,17 +63,13 @@ namespace DOTS
 
                 for (int i = 0; i < beesToSpawnTeam2; i++)
                 {
-                    Entity newEntity = Ecb.Instantiate(chunkIndex, spawner.YellowBee);
+                    Entity newEntity = em.Instantiate(spawner.TeamTwoBee);
                     var rand = new RandomComponent();
                     rand.generator.InitState((uint)((i + 1) * (timeData.ElapsedTime + 1.0) * 33223));
                     var transform = LocalTransform.FromPosition(spawner.Team2SpawnPosition);
                     transform.Scale = rand.generator.NextFloat(Data.minBeeSize, Data.maxBeeSize);
-                    Ecb.SetComponent(chunkIndex, newEntity, transform);
-                    Ecb.AddComponent(chunkIndex, newEntity, new Velocity());
-                    Ecb.AddComponent(chunkIndex, newEntity, new Alive());
-                    Ecb.AddComponent(chunkIndex, newEntity, new Target());
-                    Ecb.AddComponent(chunkIndex, newEntity, rand);
-                    Ecb.AddSharedComponent(chunkIndex, newEntity, new Team { Value = 2 });
+                    SystemAPI.SetComponent(newEntity, transform);
+                    SystemAPI.SetComponent(newEntity, rand);
                 }
             }
         }

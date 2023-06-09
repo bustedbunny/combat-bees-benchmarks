@@ -1,8 +1,10 @@
 using Unity.Entities;
 
-public struct Team : ISharedComponentData
+public struct TeamOne : IComponentData { }
+
+public struct TeamTwo : IComponentData { }
+
+public struct Team : IComponentData
 {
-    public int Value;
-    public static implicit operator Team(int value) => new Team { Value = value };
-    public static implicit operator int(Team team) => team.Value;
+    public byte Value;
 }

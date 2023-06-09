@@ -16,8 +16,8 @@ class SpawnerBaker : Baker<SpawnerAuthoring>
         {
             // By default, each authoring GameObject turns into an Entity.
             // Given a GameObject (or authoring component), GetEntity looks up the resulting Entity.
-            BlueBee = GetEntity(authoring.BlueBee, TransformUsageFlags.Dynamic),
-            YellowBee = GetEntity(authoring.YellowBee, TransformUsageFlags.Dynamic),
+            TeamOneBee = GetEntity(authoring.BlueBee, TransformUsageFlags.Dynamic),
+            TeamTwoBee = GetEntity(authoring.YellowBee, TransformUsageFlags.Dynamic),
             Team1SpawnPosition = DataBurst.Team1BeeSpawnPos,
             Team2SpawnPosition = DataBurst.Team2BeeSpawnPos
         });

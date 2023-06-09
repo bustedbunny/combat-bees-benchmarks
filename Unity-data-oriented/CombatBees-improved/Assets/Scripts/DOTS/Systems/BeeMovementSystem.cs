@@ -8,22 +8,20 @@ using Unity.Jobs;
 
 namespace DOTS
 {
-
     [BurstCompile]
     [UpdateBefore(typeof(TransformSystemGroup))]
     [UpdateAfter(typeof(AttackSystem))]
     public partial struct BeeMovementSystem : ISystem
     {
-
         private EntityQuery team1Bees;
         private EntityQuery team2Bees;
 
         public void OnCreate(ref SystemState state)
         {
-            team1Bees = state.EntityManager.CreateEntityQuery(typeof(Team), typeof(LocalToWorld), typeof(Velocity), typeof(RandomComponent), typeof(Alive));
-            team1Bees.AddSharedComponentFilter<Team>(1);
-            team2Bees = state.EntityManager.CreateEntityQuery(typeof(Team), typeof(LocalToWorld), typeof(Velocity), typeof(RandomComponent), typeof(Alive));
-            team2Bees.AddSharedComponentFilter<Team>(2);
+            team1Bees = SystemAPI.QueryBuilder()
+                .WithAll<TeamOne, Team, LocalToWorld, Velocity, RandomComponent>().WithNone<Dead>().Build();
+            team2Bees = SystemAPI.QueryBuilder()
+                .WithAll<TeamTwo, Team, LocalToWorld, Velocity, RandomComponent>().WithNone<Dead>().Build();
         }
 
         public void OnDestroy(ref SystemState state) { }
@@ -31,15 +29,16 @@ namespace DOTS
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            var team1Transforms = team1Bees.ToComponentDataListAsync<LocalToWorld>(Allocator.TempJob, state.Dependency, out var dep1);
-            var team2Transforms = team2Bees.ToComponentDataListAsync<LocalToWorld>(Allocator.TempJob, state.Dependency, out var dep2);
+            var team1Transforms =
+                team1Bees.ToComponentDataListAsync<LocalToWorld>(Allocator.TempJob, state.Dependency, out var dep1);
+            var team2Transforms =
+                team2Bees.ToComponentDataListAsync<LocalToWorld>(Allocator.TempJob, state.Dependency, out var dep2);
 
             state.Dependency = new MovementJob
             {
                 deltaTime = state.WorldUnmanaged.Time.DeltaTime,
                 Team1Transforms = team1Transforms.AsDeferredJobArray(),
                 Team2Transforms = team2Transforms.AsDeferredJobArray(),
-
             }.ScheduleParallel(JobHandle.CombineDependencies(dep1, dep2));
 
             team1Transforms.Dispose(state.Dependency);
@@ -47,6 +46,7 @@ namespace DOTS
         }
 
         [BurstCompile]
+        [WithNone(typeof(Dead))]
         public partial struct MovementJob : IJobEntity
         {
             public float deltaTime;
@@ -57,7 +57,8 @@ namespace DOTS
             // This example queries for all Spawner components and uses `ref` to specify that the operation
             // requires read and write access. Unity processes `Execute` for each entity that matches the
             // component data query.
-            private void Execute(ref LocalTransform transform, ref Velocity velocity, ref RandomComponent random, in Team team, in Alive _)
+            private void Execute(ref LocalTransform transform, ref Velocity velocity, ref RandomComponent random,
+                in Team team)
             {
                 float3 randomVector;
                 randomVector.x = random.generator.NextFloat() * 2.0f - 1.0f;
@@ -67,8 +68,8 @@ namespace DOTS
                 velocity.Value += randomVector * (Data.flightJitter * deltaTime);
                 velocity.Value *= (1f - Data.damping * deltaTime);
 
-                var aliveBeesCount = team == 1 ? Team1Transforms.Length : Team2Transforms.Length;
-                var allyPositions = team == 1 ? Team1Transforms : Team2Transforms;
+                var aliveBeesCount = team.Value == 1 ? Team1Transforms.Length : Team2Transforms.Length;
+                var allyPositions = team.Value == 1 ? Team1Transforms : Team2Transforms;
 
                 //Move towards random ally
                 float3 beePosition = transform.Position;

@@ -8,7 +8,6 @@ using Unity.Jobs;
 
 namespace DOTS
 {
-
     [BurstCompile]
     [UpdateBefore(typeof(AttackSystem))]
     [UpdateAfter(typeof(BeeWallCollisionSystem))]
@@ -19,10 +18,8 @@ namespace DOTS
 
         public void OnCreate(ref SystemState state)
         {
-            team1Alive = state.EntityManager.CreateEntityQuery(typeof(Team), typeof(Alive));
-            team1Alive.AddSharedComponentFilter<Team>(1);
-            team2Alive = state.EntityManager.CreateEntityQuery(typeof(Team), typeof(Alive));
-            team2Alive.AddSharedComponentFilter<Team>(2);
+            team1Alive = SystemAPI.QueryBuilder().WithAll<TeamOne>().WithNone<Dead>().Build();
+            team2Alive = SystemAPI.QueryBuilder().WithAll<TeamTwo>().WithNone<Dead>().Build();
         }
 
         public void OnDestroy(ref SystemState state) { }
@@ -30,33 +27,31 @@ namespace DOTS
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            var team1Entities = team1Alive.ToEntityListAsync(Allocator.TempJob, state.Dependency, out var dep1);
-            var team2Entities = team2Alive.ToEntityListAsync(Allocator.TempJob, state.Dependency, out var dep2);
+            var team1Entities =
+                team1Alive.ToEntityListAsync(state.WorldUpdateAllocator, state.Dependency, out var dep1);
+            var team2Entities =
+                team2Alive.ToEntityListAsync(state.WorldUpdateAllocator, state.Dependency, out var dep2);
 
             state.Dependency = new TargetJob
             {
-                deltaTime = state.WorldUnmanaged.Time.DeltaTime,
-                team1Enemies = team2Entities.AsDeferredJobArray(),
-                team2Enemies = team1Entities.AsDeferredJobArray()
+                team1Enemies = team2Entities,
+                team2Enemies = team1Entities
             }.ScheduleParallel(JobHandle.CombineDependencies(dep1, dep2));
-
-            team1Entities.Dispose(state.Dependency);
-            team2Entities.Dispose(state.Dependency);
         }
 
 
         [BurstCompile]
+        [WithNone(typeof(Dead))]
         public partial struct TargetJob : IJobEntity
         {
-            public float deltaTime;
-            [ReadOnly] public NativeArray<Entity> team1Enemies;
-            [ReadOnly] public NativeArray<Entity> team2Enemies;
+            [ReadOnly] public NativeList<Entity> team1Enemies;
+            [ReadOnly] public NativeList<Entity> team2Enemies;
 
-            private void Execute(ref RandomComponent random, ref Target target, in Team team, in Alive _)
+            private void Execute(ref RandomComponent random, ref Target target, in Team team)
             {
                 if (target.enemyTarget == Entity.Null)
                 {
-                    var enemies = team == 1 ? team1Enemies : team2Enemies;
+                    var enemies = team.Value == 1 ? team1Enemies : team2Enemies;
                     int newTarget = random.generator.NextInt(0, enemies.Length);
                     target.enemyTarget = enemies[newTarget];
                 }
