@@ -37,8 +37,8 @@ namespace DOTS
             state.Dependency = new MovementJob
             {
                 deltaTime = state.WorldUnmanaged.Time.DeltaTime,
-                Team1Transforms = team1Transforms.AsDeferredJobArray(),
-                Team2Transforms = team2Transforms.AsDeferredJobArray(),
+                Team1Transforms = team1Transforms,
+                Team2Transforms = team2Transforms,
             }.ScheduleParallel(JobHandle.CombineDependencies(dep1, dep2));
 
             team1Transforms.Dispose(state.Dependency);
@@ -50,8 +50,8 @@ namespace DOTS
         public partial struct MovementJob : IJobEntity
         {
             public float deltaTime;
-            [ReadOnly] public NativeArray<LocalToWorld> Team1Transforms;
-            [ReadOnly] public NativeArray<LocalToWorld> Team2Transforms;
+            [ReadOnly] public NativeList<LocalToWorld> Team1Transforms;
+            [ReadOnly] public NativeList<LocalToWorld> Team2Transforms;
 
             // IJobEntity generates a component data query based on the parameters of its `Execute` method.
             // This example queries for all Spawner components and uses `ref` to specify that the operation
@@ -68,7 +68,7 @@ namespace DOTS
                 velocity.Value += randomVector * (Data.flightJitter * deltaTime);
                 velocity.Value *= (1f - Data.damping * deltaTime);
 
-                var aliveBeesCount = team.Value == 1 ? Team1Transforms.Length : Team2Transforms.Length;
+                var aliveBeesCount = math.select(Team2Transforms.Length, Team1Transforms.Length, team.Value == 1);
                 var allyPositions = team.Value == 1 ? Team1Transforms : Team2Transforms;
 
                 //Move towards random ally
@@ -89,7 +89,7 @@ namespace DOTS
                 velocity.Value -= delta * (Data.teamRepulsion * deltaTime / dist);
 
                 var rotation = transform.Rotation;
-                var targetRotation = quaternion.LookRotation(math.normalize(velocity.Value), Vector3.up);
+                var targetRotation = quaternion.LookRotation(math.normalize(velocity.Value), math.up());
                 rotation = math.nlerp(rotation, targetRotation, deltaTime * 4);
                 transform.Rotation = rotation;
             }
